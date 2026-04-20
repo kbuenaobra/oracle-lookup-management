@@ -104,17 +104,16 @@ python create_schema.py
 You should see:
 ```
 ✓ Connected to Oracle Database successfully
-  Database: localhost:1521/XEPDB1
+  Host: localhost:1521
+  Service: XEPDB1
   User: SYSTEM
 
-Dropping existing tables...
-Creating FND_LOOKUP_TYPES table...
-  ✓ Created FND_LOOKUP_TYPES
-Creating FND_LOOKUP_VALUES table...
-  ✓ Created FND_LOOKUP_VALUES
+Checking existing Oracle schema...
 
-SCHEMA CREATION COMPLETED SUCCESSFULLY
+SCHEMA CHECK COMPLETED SUCCESSFULLY
 ```
+
+`create_schema.py` is safe to re-run. It only creates missing Oracle objects and preserves existing data.
 
 ### Step 6: Launch Streamlit Application
 ```powershell
@@ -186,7 +185,7 @@ pip install -r requirements.txt
 **Solution**: Check your database credentials in `create_schema.py`:
 ```python
 DB_USER = "SYSTEM"
-DB_PASSWORD = "xe"  # Update if your password is different
+DB_PASSWORD = "ADmin1234"  # Update if your password is different
 ```
 
 ### Error: "Cannot connect to localhost:1521/XEPDB1"
@@ -205,7 +204,7 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 **Solution**:
 1. Check terminal for error messages
 2. Restart the app: Press Ctrl+C and run `streamlit run app.py` again
-3. Check database connection: Run `python create_schema.py` to verify
+3. Check database connection: Run `python create_schema.py` to verify without deleting data
 
 ---
 

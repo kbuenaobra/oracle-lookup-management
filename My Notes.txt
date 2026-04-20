@@ -4,8 +4,9 @@ Sql Developer Extension
 asked agent to run lookup.md 
 -- a lot of asking, checking done
 
-it created sqlLite for the db
+it created a test db path first
 -- asked ai to use my oracle database 21c instead
 
 
-streamlit run app_sqlite.py
+streamlit run app.py
+http://localhost:8501/

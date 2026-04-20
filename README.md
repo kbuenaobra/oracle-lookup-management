@@ -12,7 +12,9 @@ A Streamlit web application for managing Oracle EBS lookup codes with search, cr
 
 ## Quick Start
 
-### Testing Version (SQLite)
+### Default Run Mode (Oracle)
+
+Double-click `run_app.bat` for the normal Oracle startup path.
 
 ```bash
 # Navigate to project
@@ -22,46 +24,31 @@ cd "c:\Users\user\Documents\Working Folder\AI\Oracle Lookup Project"
 .\venv\Scripts\Activate.bat
 
 # Install dependencies
-pip install streamlit pandas openpyxl
+pip install -r requirements.txt
 
 # Run the app
-streamlit run app_sqlite.py
+python create_schema.py
+streamlit run app.py
 ```
 
 Visit: http://localhost:8501
 
-### Production Version (Oracle)
+### Prerequisites
 
-**Prerequisites:**
 - Oracle 21c Express Edition running at localhost:1521/XEPDB1
 - C++ Build Tools (for cx-Oracle compilation)
 - Oracle Client libraries (optional)
-
-```bash
-# Activate virtual environment
-.\venv\Scripts\Activate.bat
-
-# Install all dependencies
-pip install -r requirements.txt
-
-# Initialize database schema
-python create_schema.py
-
-# Run the app
-streamlit run app.py
-```
 
 ## Project Structure
 
 ```
 Oracle Lookup Project/
 ├── app.py                    # Streamlit app (Oracle version)
-├── app_sqlite.py             # Streamlit app (SQLite testing version)
 ├── create_schema.py          # Database schema initialization
 ├── schema.sql                # SQL schema definitions
 ├── requirements.txt          # Python dependencies (Oracle)
-├── requirements_simple.txt   # Python dependencies (SQLite)
 ├── requirements_clean.txt    # Clean requirements file
+├── run_app.bat               # One-click Oracle app launcher
 ├── setup.bat                 # Automated setup script
 ├── Lookup.md                 # Technical PRD
 ├── SETUP_GUIDE.md            # Detailed setup instructions
@@ -89,7 +76,7 @@ Oracle Lookup Project/
 ## Technology Stack
 
 - **Frontend**: Streamlit 1.31.1
-- **Database**: SQLite (testing) or Oracle 21c (production)
+- **Database**: Oracle 21c
 - **Data Processing**: Pandas 1.3.5
 - **Oracle Driver**: cx-Oracle 8.3.0 (production only)
 - **Python**: 3.8+
@@ -116,7 +103,7 @@ Ensure `(venv)` appears in your terminal prompt before running commands.
 - Test with SQL Developer extension first
 
 ### Pandas Build Errors
-Use the SQLite version (`app_sqlite.py`) or upgrade pip:
+Upgrade pip and install wheels:
 ```bash
 python -m pip install --upgrade pip
 pip install --only-binary :all: pandas
@@ -129,10 +116,7 @@ pip install --only-binary :all: pandas
 # Test database connection
 python create_schema.py
 
-# Test SQLite version
-streamlit run app_sqlite.py
-
-# Test Oracle version (if Oracle is available)
+# Test Oracle version
 streamlit run app.py
 ```
 
@@ -153,7 +137,7 @@ Then upload via the **⚡ Bulk Upload** tab.
 
 ### Local Testing
 ```bash
-streamlit run app_sqlite.py
+streamlit run app.py
 ```
 
 ### Cloud Deployment (Streamlit Cloud)
@@ -171,7 +155,6 @@ streamlit run app_sqlite.py
 ## Support & Resources
 
 - **Streamlit Docs**: https://docs.streamlit.io
-- **Python sqlite3**: https://docs.python.org/3/library/sqlite3.html
 - **cx-Oracle Docs**: https://python-oracledb.readthedocs.io
 - **Oracle 21c Express**: https://www.oracle.com/database/technologies/xe-downloads.html
 
@@ -185,6 +168,6 @@ Created: 2026-04-18
 
 ---
 
-**Status**: ✅ Fully functional SQLite version | Oracle version requires build tools
+**Status**: ✅ Oracle version is the default application entrypoint
 
-**Ready to Deploy**: Yes - Start with SQLite version, migrate to Oracle when environment is ready
+**Ready to Deploy**: Yes - Oracle is the primary database target

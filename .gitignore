@@ -26,11 +26,8 @@ wheels/
 .installed.cfg
 *.egg
 
-# SQLite Database
+# Local database exports
 *.db
-*.sqlite
-*.sqlite3
-lookups.db
 
 # IDE
 .vscode/

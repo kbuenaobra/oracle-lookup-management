@@ -22,11 +22,14 @@
 **EASIEST METHOD:**
 - [ ] Double-click `setup.bat` in your project folder
 
+**DAILY APP START:**
+- [ ] Double-click `run_app.bat` to launch the Oracle app after setup is complete
+
 **OR Follow Manual Steps in SETUP_GUIDE.md:**
 1. [ ] Create virtual environment: `python -m venv venv`
 2. [ ] Activate venv: `.\venv\Scripts\Activate.ps1`
 3. [ ] Install dependencies: `pip install -r requirements.txt`
-4. [ ] Initialize database: `python create_schema.py`
+4. [ ] Initialize database: `python create_schema.py` (safe to re-run, preserves existing data)
 5. [ ] Launch app: `streamlit run app.py`
 
 ### Step 3: Test the Application
@@ -53,6 +56,7 @@ Oracle Lookup Project/
 ├── create_schema.py       ← Database schema initialization
 ├── schema.sql             ← SQL schema definitions
 ├── requirements.txt       ← Python dependencies
+├── run_app.bat            ← One-click Oracle app launcher
 ├── setup.bat              ← Automated setup script
 └── venv/                  ← Virtual environment (created during setup)
 ```
@@ -92,10 +96,15 @@ Database Connection (XE_Local):
   Port: 1521
   Service: XEPDB1
   User: SYSTEM
-  Password: xe
+   Password: ADmin1234
 ```
 
 **Note**: Update these in `create_schema.py` and `app.py` if your Oracle setup differs.
+
+## Important Behavior Change
+
+- `app.py` is the primary Oracle application entrypoint.
+- `create_schema.py` preserves existing Oracle data instead of dropping tables on each run.
 
 ## ✨ Ready to Go?
 

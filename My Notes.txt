@@ -1,0 +1,11 @@
+Installed VS Code, Oracle Express 21c
+Sql Developer Extension
+
+asked agent to run lookup.md 
+-- a lot of asking, checking done
+
+it created sqlLite for the db
+-- asked ai to use my oracle database 21c instead
+
+
+streamlit run app_sqlite.py

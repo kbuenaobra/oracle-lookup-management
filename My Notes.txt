@@ -1,11 +1,11 @@
-Installed VS Code, Oracle Express 21c
-Sql Developer Extension
-
-asked agent to run lookup.md 
+1) Installed VS Code, 
+2) Oracle Express 21c
+3) Sql Developer Extension
+4) Connect Oracle Express 21c to VS Code
+5) asked agent to run lookup.md 
 -- a lot of asking, checking done
-
-it created a test db path first
--- asked ai to use my oracle database 21c instead
+-- for the database created a test db (SQLlite) first
+-- then asked ai to use my oracle database 21c instead
 
 
 streamlit run app.py
@@ -15,18 +15,24 @@ To save to repository:
 ============================
 git init
 git add .
-git commit -am "Apr20Commit_1"
+git commit -am "Apr21Commit"
 --git remote add origin https://github.com/kbuenaobra/oracle-lookup-management.git
 git push origin master
 
 To run project:
 ============================
-Set-Location "c:\Users\user\Documents\Working Folder\AI\Oracle Lookup Project"
-& ".\venv\Scripts\python.exe" create_schema.py
-& ".\venv\Scripts\python.exe" -m streamlit run app.py
+Double-click run_app.bat for the normal Oracle startup path.
 
-If you want the easiest path, just double-click:
-[start_project.bat](c:/Users/user/Documents/Working%20Folder/AI/Oracle Lookup Project/start_project.bat)
+# Navigate to project
+cd "c:\Users\user\Documents\Working Folder\AI\Oracle Lookup Project"
 
-If the app is already running on port 8502, stop that instance first or start a new one on another port:
-& ".\venv\Scripts\python.exe" -m streamlit run app.py --server.port 8504
+# Activate virtual environment
+.\venv\Scripts\Activate.bat
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run the app
+python create_schema.py
+streamlit run app.py
+Visit: http://localhost:8501

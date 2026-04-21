@@ -9,4 +9,24 @@ it created a test db path first
 
 
 streamlit run app.py
-http://localhost:8501/
+http://localhost:8502/
+
+To save to repository:
+============================
+git init
+git add .
+git commit -am "Apr20Commit_1"
+--git remote add origin https://github.com/kbuenaobra/oracle-lookup-management.git
+git push origin master
+
+To run project:
+============================
+Set-Location "c:\Users\user\Documents\Working Folder\AI\Oracle Lookup Project"
+& ".\venv\Scripts\python.exe" create_schema.py
+& ".\venv\Scripts\python.exe" -m streamlit run app.py
+
+If you want the easiest path, just double-click:
+[start_project.bat](c:/Users/user/Documents/Working%20Folder/AI/Oracle Lookup Project/start_project.bat)
+
+If the app is already running on port 8502, stop that instance first or start a new one on another port:
+& ".\venv\Scripts\python.exe" -m streamlit run app.py --server.port 8504

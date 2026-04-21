@@ -7,7 +7,8 @@ A Streamlit web application for managing Oracle EBS lookup codes with search, cr
 - 🔎 **Search & Discovery** - Global search by Lookup Type, Code, or Meaning
 - ➕ **Create New** - Form-based lookup creation with validation
 - 📊 **View All** - Browse and filter lookups by type
-- ⚡ **Bulk Upload** - CSV/Excel import with batch processing
+- 📈 **Reports** - Type summaries, expiring code tracking, recent changes, and CSV exports
+- ⚡ **Bulk Upload** - CSV/Excel/PDF/image import with batch processing
 - 🔗 **Dependencies** - Cross-reference analysis framework
 
 ## Quick Start
@@ -78,7 +79,8 @@ Oracle Lookup Project/
 - **Frontend**: Streamlit 1.31.1
 - **Database**: Oracle 21c
 - **Data Processing**: Pandas 1.3.5
-- **Oracle Driver**: cx-Oracle 8.3.0 (production only)
+- **Oracle Driver**: python-oracledb
+- **OCR**: RapidOCR with OpenCV and Pillow
 - **Python**: 3.8+
 
 ## Installation Issues & Fixes
@@ -131,7 +133,15 @@ STATUS,ACTIVE,Active,Record is active,Y,2026-04-18,
 STATUS,INACTIVE,Inactive,Record is inactive,Y,2026-04-18,
 ```
 
-Then upload via the **⚡ Bulk Upload** tab.
+Then upload via the **⚡ Bulk Upload** tab. PDF files that contain the same tabular columns can also be imported directly.
+
+### Image Uploads
+
+The bulk upload page also accepts `PNG`, `JPG`, and `JPEG` files.
+
+- Best results come from screenshots or pictures of clear tables with visible rows and columns.
+- The app runs OCR on the image, converts the result into a table, and opens an editable preview before anything is written to Oracle.
+- Review the extracted values carefully. OCR can miss short codes or flags in low-quality images, but the review grid lets you correct them before confirming the upload.
 
 ## Deployment
 
@@ -155,7 +165,7 @@ streamlit run app.py
 ## Support & Resources
 
 - **Streamlit Docs**: https://docs.streamlit.io
-- **cx-Oracle Docs**: https://python-oracledb.readthedocs.io
+- **python-oracledb Docs**: https://python-oracledb.readthedocs.io
 - **Oracle 21c Express**: https://www.oracle.com/database/technologies/xe-downloads.html
 
 ## License

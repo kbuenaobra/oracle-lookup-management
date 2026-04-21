@@ -1,0 +1,4 @@
+﻿LOOKUP_TYPE,LOOKUP_CODE,MEANING,DESCRIPTION,START_DATE_ACTIVE,ENABLED_FLAG
+DEPARTMENT,HR,Human Resources,Handles recruitment and employee relations,21-Apr-26,Y
+DEPARTMENT,FIN,Finance,Manages budgets and accounting,21-Apr-26,Y
+DEPARTMENT,IT,Information Technology,Maintains systems and infrastructure,21-Apr-26,Y

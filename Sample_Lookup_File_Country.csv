@@ -1,0 +1,4 @@
+﻿LOOKUP_TYPE,MEANING,LOOKUP_CODE,MEANING,DESCRIPTION,TAG,START_DATE_ACTIVE,END_DATE_ACTIVE,ENABLED_FLAG
+COUNTRY_CODE,List of Country Codes,SG ,Singapore,Country code for Singapore,,21-Apr-26,,Y
+COUNTRY_CODE,List of Country Codes,US,United States,Country code for USA,,21-Apr-26,,Y
+COUNTRY_CODE,List of Country Codes,JP,Japan,Country code for Japan,,21-Apr-26,,Y

@@ -68,9 +68,9 @@ NATURAL_LANGUAGE_STOPWORDS = {
     "a", "about", "active", "all", "an", "and", "by", "change", "code", "codes",
     "date", "day", "days", "description", "disable", "disabled", "enable", "enabled", "end",
     "expiring", "find", "for", "from", "get", "in", "instruction", "instructions",
-    "is", "list", "lookup", "lookups", "meaning", "of", "on", "plain", "request",
+    "has", "having", "is", "list", "lookup", "lookups", "meaning", "no", "not", "null", "of", "on", "plain", "request",
     "requests", "search", "set", "show", "start", "that", "the", "this", "to",
-    "type", "update", "value", "values", "week", "weeks", "month", "months", "without", "year", "years", "with", "within"
+    "starts", "starting", "type", "update", "value", "values", "week", "weeks", "month", "months", "where", "without", "year", "years", "with", "within"
 }
 
 
@@ -730,6 +730,7 @@ def parse_free_text_query(query_text):
         "status": None,
         "expiring_within_days": None,
         "requires_end_date": None,
+        "starts_with": None,
         "keywords": [],
         "limit": 100
     }
@@ -758,9 +759,20 @@ def parse_free_text_query(query_text):
     elif "this month" in lowered_query:
         parsed["expiring_within_days"] = 30
 
-    if re.search(r"(?:without|no)\s+end\s+date", lowered_query):
+    starts_with_match = re.search(
+        r"(?:starts?|begin(?:s)?|starting)\s+with\s+([A-Za-z0-9_]+)",
+        lowered_query
+    )
+    if starts_with_match:
+        parsed["starts_with"] = starts_with_match.group(1).upper()
+
+    if re.search(r"(?:without|no)\s+end\s+date", lowered_query) or re.search(r"end[_\s]+date\s+(?:is\s+)?null", lowered_query):
         parsed["requires_end_date"] = False
-    elif re.search(r"(?:with|has|having|where)\s+end\s+date", lowered_query) or "end date values" in lowered_query:
+    elif (
+        re.search(r"(?:with|has|having|where)\s+end\s+date", lowered_query)
+        or re.search(r"end[_\s]+date\s+(?:is\s+)?not\s+null", lowered_query)
+        or "end date values" in lowered_query
+    ):
         parsed["requires_end_date"] = True
 
     limit_match = re.search(r"(?:top|limit)\s+(\d+)", lowered_query)
@@ -772,6 +784,7 @@ def parse_free_text_query(query_text):
     excluded_tokens = {
         (parsed["lookup_type"] or "").lower(),
         (parsed["lookup_code"] or "").lower(),
+        (parsed["starts_with"] or "").lower(),
         "active",
         "inactive",
         "enabled",
@@ -830,6 +843,17 @@ def search_lookup_values_by_instruction(conn, parsed_query):
         normalized_start_date = normalize_date_value(row[5])
         normalized_end_date = normalize_date_value(row[6])
         status = "Active" if is_lookup_active(row[4], normalized_start_date, normalized_end_date) else "Inactive"
+
+        if parsed_query["starts_with"]:
+            prefix_value = parsed_query["starts_with"]
+            prefix_candidates = [
+                str(row[0] or "").upper(),
+                str(row[1] or "").upper(),
+                str(row[2] or "").upper(),
+                str(row[3] or "").upper()
+            ]
+            if not any(candidate.startswith(prefix_value) for candidate in prefix_candidates):
+                continue
 
         if parsed_query["status"] and status != parsed_query["status"]:
             continue

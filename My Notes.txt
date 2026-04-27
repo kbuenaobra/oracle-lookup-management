@@ -1,6 +1,6 @@
 1) Installed VS Code, 
 2) Oracle Express 21c
-3) Sql Developer Extension
+3) SQL Developer Extension
 4) Connect Oracle Express 21c to VS Code
 5) asked agent to run lookup.md 
 -- a lot of asking, checking done
@@ -8,16 +8,14 @@
 -- then asked ai to use my oracle database 21c instead
 
 
-streamlit run app.py
-http://localhost:8502/
-
 To save to repository:
 ============================
 git init
 git add .
-git commit -am "Apr21Commit"
+git commit -am "Apr27Commit"
 --git remote add origin https://github.com/kbuenaobra/oracle-lookup-management.git
 git push origin master
+
 
 To run project:
 ============================

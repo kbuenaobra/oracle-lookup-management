@@ -28,9 +28,9 @@
 **OR Follow Manual Steps in SETUP_GUIDE.md:**
 1. [ ] Create virtual environment: `python -m venv venv`
 2. [ ] Activate venv: `.\venv\Scripts\Activate.ps1`
-3. [ ] Install dependencies: `pip install -r requirements.txt`
+3. [ ] Install dependencies: `venv\Scripts\python.exe -m pip install -r requirements.txt`
 4. [ ] Initialize database: `python create_schema.py` (safe to re-run, preserves existing data)
-5. [ ] Launch app: `streamlit run app.py`
+5. [ ] Launch app: `venv\Scripts\python.exe -m streamlit run app.py`
 
 ### Step 3: Test the Application
 - [ ] Access http://localhost:8501

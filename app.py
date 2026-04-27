@@ -6,16 +6,32 @@ A Streamlit web application for managing Oracle EBS lookup codes
 import streamlit as st
 import pandas as pd
 import oracledb
-import pdfplumber
-import cv2
 import numpy as np
 from datetime import datetime, date
 import re
 import sys
 from io import StringIO
 import traceback
-from PIL import Image
-from rapidocr_onnxruntime import RapidOCR
+
+try:
+    import pdfplumber
+except ImportError:
+    pdfplumber = None
+
+try:
+    import cv2
+except ImportError:
+    cv2 = None
+
+try:
+    from PIL import Image
+except ImportError:
+    Image = None
+
+try:
+    from rapidocr_onnxruntime import RapidOCR
+except ImportError:
+    RapidOCR = None
 
 # Page configuration
 st.set_page_config(
@@ -48,6 +64,32 @@ DB_USER = "SYSTEM"
 DB_PASSWORD = "ADmin1234"  # Update if needed
 
 IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg")
+NATURAL_LANGUAGE_STOPWORDS = {
+    "a", "about", "active", "all", "an", "and", "by", "change", "code", "codes",
+    "date", "day", "days", "description", "disable", "disabled", "enable", "enabled", "end",
+    "expiring", "find", "for", "from", "get", "in", "instruction", "instructions",
+    "is", "list", "lookup", "lookups", "meaning", "of", "on", "plain", "request",
+    "requests", "search", "set", "show", "start", "that", "the", "this", "to",
+    "type", "update", "value", "values", "week", "weeks", "month", "months", "without", "year", "years", "with", "within"
+}
+
+
+def require_optional_dependency(module_reference, package_name, feature_name):
+    """Raise a targeted error when an optional upload dependency is unavailable."""
+    if module_reference is None:
+        raise RuntimeError(
+            f"{feature_name} is unavailable because '{package_name}' is not installed in the active Python environment. "
+            "Install project requirements or run the app with the project virtual environment."
+        )
+
+
+def normalize_date_value(value):
+    """Normalize Oracle date-like values to Python date objects for comparisons."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    return value
 
 # ============================================================================
 # SESSION STATE INITIALIZATION
@@ -160,17 +202,10 @@ def is_lookup_active(enabled_flag, start_date, end_date):
     """Check if a lookup is currently active"""
     if enabled_flag != 'Y':
         return False
-
-    def normalize_date(value):
-        if value is None:
-            return None
-        if isinstance(value, datetime):
-            return value.date()
-        return value
     
     today = datetime.now().date()
-    start_date = normalize_date(start_date)
-    end_date = normalize_date(end_date)
+    start_date = normalize_date_value(start_date)
+    end_date = normalize_date_value(end_date)
     
     if start_date and start_date > today:
         return False
@@ -220,11 +255,13 @@ def normalize_upload_dataframe(df):
 @st.cache_resource
 def get_ocr_engine():
     """Create and cache the OCR engine for image uploads."""
+    require_optional_dependency(RapidOCR, "rapidocr-onnxruntime", "Image OCR")
     return RapidOCR()
 
 
 def image_file_to_array(uploaded_file):
     """Load an uploaded image file into an RGB numpy array."""
+    require_optional_dependency(Image, "Pillow", "Image uploads")
     uploaded_file.seek(0)
     image = Image.open(uploaded_file).convert("RGB")
     uploaded_file.seek(0)
@@ -288,6 +325,7 @@ def find_line_positions(line_mask, axis, minimum_ratio):
 
 def detect_table_cells(image_array):
     """Detect grid-like table cells in an uploaded image."""
+    require_optional_dependency(cv2, "opencv-python-headless", "Image uploads")
     gray_image = cv2.cvtColor(image_array, cv2.COLOR_RGB2GRAY)
     inverted = cv2.threshold(gray_image, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
 
@@ -405,6 +443,7 @@ def extract_image_table(uploaded_file):
 
 def extract_pdf_tables(uploaded_file):
     """Extract tabular lookup data from a PDF upload."""
+    require_optional_dependency(pdfplumber, "pdfplumber", "PDF uploads")
     uploaded_file.seek(0)
     extracted_tables = []
 
@@ -655,6 +694,420 @@ def dataframe_to_csv_bytes(df):
     return df.to_csv(index=False).encode("utf-8")
 
 
+def parse_instruction_date(date_text):
+    """Parse common instruction date formats into a Python date."""
+    cleaned_date_text = str(date_text).strip()
+    for date_format in ["%Y-%m-%d", "%d-%b-%Y", "%d-%B-%Y", "%d/%m/%Y", "%d-%m-%Y"]:
+        try:
+            return datetime.strptime(cleaned_date_text, date_format).date()
+        except ValueError:
+            continue
+
+    return pd.to_datetime(cleaned_date_text, dayfirst=True).date()
+
+
+def extract_quoted_or_unquoted_value(text, pattern):
+    """Extract a field value from instruction text, preferring quoted values."""
+    match = re.search(pattern, text, re.IGNORECASE)
+    if not match:
+        return None
+
+    for group_value in match.groups():
+        if group_value:
+            return group_value.strip().strip('"').strip("'")
+
+    return None
+
+
+def parse_free_text_query(query_text):
+    """Interpret a natural-language search query into structured filters."""
+    cleaned_query = re.sub(r"\s+", " ", (query_text or "").strip())
+    lowered_query = cleaned_query.lower()
+    parsed = {
+        "original": cleaned_query,
+        "lookup_type": None,
+        "lookup_code": None,
+        "status": None,
+        "expiring_within_days": None,
+        "requires_end_date": None,
+        "keywords": [],
+        "limit": 100
+    }
+
+    type_match = re.search(r"(?:lookup\s+type|type)\s+([A-Za-z0-9_]+)", cleaned_query, re.IGNORECASE)
+    code_match = re.search(r"(?:lookup\s+code|code)\s+([A-Za-z0-9_]+)", cleaned_query, re.IGNORECASE)
+
+    if type_match:
+        parsed["lookup_type"] = type_match.group(1).upper()
+    if code_match:
+        parsed["lookup_code"] = code_match.group(1).upper()
+
+    if any(term in lowered_query for term in ["inactive", "disabled"]):
+        parsed["status"] = "Inactive"
+    elif any(term in lowered_query for term in ["active", "enabled"]):
+        parsed["status"] = "Active"
+
+    expiring_match = re.search(
+        r"expiring\s+(?:within\s+)?(?:(\d+)\s+days?|days\s*[=:]\s*(\d+))",
+        lowered_query
+    )
+    if expiring_match:
+        parsed["expiring_within_days"] = int(expiring_match.group(1) or expiring_match.group(2))
+    elif "this week" in lowered_query:
+        parsed["expiring_within_days"] = 7
+    elif "this month" in lowered_query:
+        parsed["expiring_within_days"] = 30
+
+    if re.search(r"(?:without|no)\s+end\s+date", lowered_query):
+        parsed["requires_end_date"] = False
+    elif re.search(r"(?:with|has|having|where)\s+end\s+date", lowered_query) or "end date values" in lowered_query:
+        parsed["requires_end_date"] = True
+
+    limit_match = re.search(r"(?:top|limit)\s+(\d+)", lowered_query)
+    if limit_match:
+        parsed["limit"] = max(1, min(int(limit_match.group(1)), 1000))
+
+    tokens = re.findall(r"[A-Za-z0-9_]+", lowered_query)
+    filtered_keywords = []
+    excluded_tokens = {
+        (parsed["lookup_type"] or "").lower(),
+        (parsed["lookup_code"] or "").lower(),
+        "active",
+        "inactive",
+        "enabled",
+        "disabled"
+    }
+
+    for token in tokens:
+        if token in NATURAL_LANGUAGE_STOPWORDS or token in excluded_tokens or token.isdigit():
+            continue
+        filtered_keywords.append(token.upper())
+
+    parsed["keywords"] = list(dict.fromkeys(filtered_keywords))
+    return parsed
+
+
+def search_lookup_values_by_instruction(conn, parsed_query):
+    """Run a parser-backed free-text lookup search."""
+    cursor = conn.cursor()
+    try:
+        where_clauses = []
+        bind_values = {}
+
+        if parsed_query["lookup_type"]:
+            where_clauses.append("LOOKUP_TYPE = :lookup_type_value")
+            bind_values["lookup_type_value"] = parsed_query["lookup_type"]
+        if parsed_query["lookup_code"]:
+            where_clauses.append("LOOKUP_CODE = :lookup_code_value")
+            bind_values["lookup_code_value"] = parsed_query["lookup_code"]
+
+        base_sql = """
+            SELECT
+                LOOKUP_TYPE,
+                LOOKUP_CODE,
+                MEANING,
+                DESCRIPTION,
+                ENABLED_FLAG,
+                START_DATE_ACTIVE,
+                END_DATE_ACTIVE,
+                LAST_UPDATE_DATE
+            FROM FND_LOOKUP_VALUES
+        """
+
+        if where_clauses:
+            base_sql += " WHERE " + " AND ".join(where_clauses)
+
+        base_sql += " ORDER BY LOOKUP_TYPE, LOOKUP_CODE FETCH FIRST 2000 ROWS ONLY"
+        cursor.execute(base_sql, bind_values)
+        rows = cursor.fetchall()
+    finally:
+        cursor.close()
+
+    today = date.today()
+    results = []
+
+    for row in rows:
+        normalized_start_date = normalize_date_value(row[5])
+        normalized_end_date = normalize_date_value(row[6])
+        status = "Active" if is_lookup_active(row[4], normalized_start_date, normalized_end_date) else "Inactive"
+
+        if parsed_query["status"] and status != parsed_query["status"]:
+            continue
+
+        if parsed_query["expiring_within_days"] is not None:
+            if not normalized_end_date:
+                continue
+            days_until_expiry = (normalized_end_date - today).days
+            if days_until_expiry < 0 or days_until_expiry > parsed_query["expiring_within_days"]:
+                continue
+
+        if parsed_query["requires_end_date"] is True and not normalized_end_date:
+            continue
+        if parsed_query["requires_end_date"] is False and normalized_end_date:
+            continue
+
+        haystack = " ".join([
+            str(row[0] or "").upper(),
+            str(row[1] or "").upper(),
+            str(row[2] or "").upper(),
+            str(row[3] or "").upper()
+        ])
+
+        if parsed_query["keywords"] and not all(keyword in haystack for keyword in parsed_query["keywords"]):
+            continue
+
+        results.append({
+            "Lookup Type": row[0],
+            "Code": row[1],
+            "Meaning": row[2],
+            "Description": row[3] or "-",
+            "Status": f"{'🟢' if status == 'Active' else '🔴'} {status}",
+            "Enabled": row[4],
+            "Start Date": normalized_start_date,
+            "End Date": normalized_end_date,
+            "Last Updated": row[7]
+        })
+
+    result_df = pd.DataFrame(results)
+    if not result_df.empty:
+        result_df = result_df.head(parsed_query["limit"])
+    return result_df
+
+
+def parse_change_request(instruction_text):
+    """Interpret a plain-English change request into an update payload."""
+    cleaned_text = re.sub(r"\s+", " ", (instruction_text or "").strip())
+    lowered_text = cleaned_text.lower()
+    parsed = {
+        "original": cleaned_text,
+        "lookup_type": None,
+        "lookup_code": None,
+        "enabled_flag": None,
+        "meaning": None,
+        "description": None,
+        "start_date": None,
+        "end_date": None,
+        "action": "update",
+        "errors": [],
+        "warnings": []
+    }
+
+    type_match = re.search(r"(?:lookup\s+type|type)\s+(?:\"([^\"]+)\"|'([^']+)'|([A-Za-z0-9_]+))", cleaned_text, re.IGNORECASE)
+    code_match = re.search(
+        r"(?:for|of|on)?\s*(?:lookup\s+(?:code|value)|code|value)\s+(?:\"([^\"]+)\"|'([^']+)'|([A-Za-z0-9_]+))",
+        cleaned_text,
+        re.IGNORECASE
+    )
+    if not code_match:
+        code_match = re.search(
+            r"(?:\"([^\"]+)\"|'([^']+)')\s+lookup\s+(?:code|value)",
+            cleaned_text,
+            re.IGNORECASE
+        )
+
+    if type_match:
+        parsed["lookup_type"] = next(group for group in type_match.groups() if group).upper()
+    if code_match:
+        parsed["lookup_code"] = next(group for group in code_match.groups() if group).upper()
+
+    if any(term in lowered_text for term in ["disable", "deactivate", "turn off", "inactivate"]):
+        parsed["enabled_flag"] = "N"
+    elif any(term in lowered_text for term in ["enable", "activate", "turn on"]):
+        parsed["enabled_flag"] = "Y"
+
+    parsed["meaning"] = extract_quoted_or_unquoted_value(
+        cleaned_text,
+        r"(?:set|change|update)\s+meaning\s*(?:to|as|=)?\s*(?:\"([^\"]+)\"|'([^']+)'|([^,]+?)(?:\s+and\s+|\s+with\s+|\s+of\s+|\s+for\s+|\s+on\s+|$))"
+    )
+    parsed["description"] = extract_quoted_or_unquoted_value(
+        cleaned_text,
+        r"(?:set|change|update)\s+description\s*(?:to|as|=)?\s*(?:\"([^\"]+)\"|'([^']+)'|([^,]+?)(?:\s+and\s+|\s+with\s+|\s+of\s+|\s+for\s+|\s+on\s+|$))"
+    )
+
+    start_date_match = re.search(
+        r"(?:start\s+date|start-date|effective\s+from|start)\s*(?:to|on|as)?\s*([A-Za-z0-9\-/]+)",
+        cleaned_text,
+        re.IGNORECASE
+    )
+    end_date_match = re.search(
+        r"(?:end\s+date|end-date|expire|expires|effective\s+until)\s*(?:to|on|as)?\s*([A-Za-z0-9\-/]+)",
+        cleaned_text,
+        re.IGNORECASE
+    )
+
+    if start_date_match:
+        try:
+            parsed["start_date"] = parse_instruction_date(start_date_match.group(1))
+        except Exception:
+            parsed["errors"].append("Could not parse the requested start date.")
+    if end_date_match:
+        try:
+            parsed["end_date"] = parse_instruction_date(end_date_match.group(1))
+        except Exception:
+            parsed["errors"].append("Could not parse the requested end date.")
+
+    if any(term in lowered_text for term in ["create", "add new", "new lookup"]):
+        parsed["errors"].append("Create requests are not supported in the plain-English assistant yet.")
+
+    if not parsed["lookup_code"]:
+        parsed["errors"].append("Include the lookup code or lookup value, for example: code US.")
+    elif not parsed["lookup_type"]:
+        parsed["warnings"].append("Lookup type was not provided. The assistant will try to resolve the code uniquely.")
+
+    requested_fields = [
+        parsed["enabled_flag"],
+        parsed["meaning"],
+        parsed["description"],
+        parsed["start_date"],
+        parsed["end_date"]
+    ]
+    if not any(value is not None for value in requested_fields):
+        parsed["errors"].append(
+            "No supported change was found. Use actions like disable, enable, set meaning, set description, start date, or end date."
+        )
+
+    return parsed
+
+
+def get_lookup_value_record(conn, lookup_type, lookup_code):
+    """Fetch one lookup value row for change preview and apply flows."""
+    cursor = conn.cursor()
+    try:
+        if lookup_type:
+            cursor.execute("""
+                SELECT
+                    LOOKUP_TYPE,
+                    LOOKUP_CODE,
+                    MEANING,
+                    DESCRIPTION,
+                    ENABLED_FLAG,
+                    START_DATE_ACTIVE,
+                    END_DATE_ACTIVE,
+                    LAST_UPDATE_DATE
+                FROM FND_LOOKUP_VALUES
+                WHERE LOOKUP_TYPE = :lookup_type_value AND LOOKUP_CODE = :lookup_code_value
+            """, {
+                "lookup_type_value": lookup_type,
+                "lookup_code_value": lookup_code
+            })
+            row = cursor.fetchone()
+        else:
+            cursor.execute("""
+                SELECT
+                    LOOKUP_TYPE,
+                    LOOKUP_CODE,
+                    MEANING,
+                    DESCRIPTION,
+                    ENABLED_FLAG,
+                    START_DATE_ACTIVE,
+                    END_DATE_ACTIVE,
+                    LAST_UPDATE_DATE
+                FROM FND_LOOKUP_VALUES
+                WHERE LOOKUP_CODE = :lookup_code_value
+                ORDER BY LOOKUP_TYPE
+            """, {
+                "lookup_code_value": lookup_code
+            })
+            rows = cursor.fetchall()
+            if len(rows) > 1:
+                raise ValueError(
+                    f"Lookup code {lookup_code} exists in multiple lookup types. Include the lookup type in the instruction."
+                )
+            row = rows[0] if rows else None
+    finally:
+        cursor.close()
+
+    if not row:
+        return None
+
+    return {
+        "Lookup Type": row[0],
+        "Lookup Code": row[1],
+        "Meaning": row[2],
+        "Description": row[3] or "",
+        "Enabled Flag": row[4],
+        "Start Date Active": normalize_date_value(row[5]),
+        "End Date Active": normalize_date_value(row[6]),
+        "Last Update Date": row[7]
+    }
+
+
+def build_change_request_preview(current_record, parsed_request):
+    """Build a side-by-side preview of the requested change."""
+    proposed_record = dict(current_record)
+
+    if parsed_request["enabled_flag"] is not None:
+        proposed_record["Enabled Flag"] = parsed_request["enabled_flag"]
+    if parsed_request["meaning"] is not None:
+        proposed_record["Meaning"] = parsed_request["meaning"]
+    if parsed_request["description"] is not None:
+        proposed_record["Description"] = parsed_request["description"]
+    if parsed_request["start_date"] is not None:
+        proposed_record["Start Date Active"] = parsed_request["start_date"]
+    if parsed_request["end_date"] is not None:
+        proposed_record["End Date Active"] = parsed_request["end_date"]
+
+    preview_rows = []
+    for field_name in ["Meaning", "Description", "Enabled Flag", "Start Date Active", "End Date Active"]:
+        preview_rows.append({
+            "Field": field_name,
+            "Current Value": current_record.get(field_name),
+            "Proposed Value": proposed_record.get(field_name)
+        })
+
+    return proposed_record, pd.DataFrame(preview_rows)
+
+
+def apply_change_request(conn, parsed_request):
+    """Apply a parsed change request after preview and validation."""
+    current_record = get_lookup_value_record(conn, parsed_request["lookup_type"], parsed_request["lookup_code"])
+    if not current_record:
+        raise ValueError("The requested lookup type and code could not be found.")
+
+    proposed_record, _ = build_change_request_preview(current_record, parsed_request)
+
+    new_start_date = proposed_record["Start Date Active"]
+    new_end_date = proposed_record["End Date Active"]
+    if new_end_date and new_start_date and new_end_date < new_start_date:
+        raise ValueError("End Date Active cannot be earlier than Start Date Active.")
+
+    update_cursor = conn.cursor()
+    try:
+        update_cursor.execute("""
+            UPDATE FND_LOOKUP_VALUES
+            SET MEANING = :1,
+                DESCRIPTION = :2,
+                ENABLED_FLAG = :3,
+                START_DATE_ACTIVE = :4,
+                END_DATE_ACTIVE = :5,
+                LAST_UPDATED_BY = :6,
+                LAST_UPDATE_DATE = :7
+            WHERE LOOKUP_TYPE = :8 AND LOOKUP_CODE = :9
+        """, [
+            proposed_record["Meaning"],
+            proposed_record["Description"] or None,
+            proposed_record["Enabled Flag"],
+            proposed_record["Start Date Active"],
+            proposed_record["End Date Active"],
+            "SYSTEM",
+            datetime.now(),
+            current_record["Lookup Type"],
+            current_record["Lookup Code"]
+        ])
+
+        if update_cursor.rowcount != 1:
+            raise ValueError("The assistant could not update the requested lookup value.")
+
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        update_cursor.close()
+
+    return proposed_record
+
+
 def build_lookup_report_datasets(conn, expiring_within_days):
     """Build the reporting datasets used by the reporting dashboard."""
     cursor = conn.cursor()
@@ -693,6 +1146,7 @@ def build_lookup_report_datasets(conn, expiring_within_days):
     today = datetime.now().date()
 
     for row in value_rows:
+        end_date = normalize_date_value(row[6])
         is_active = is_lookup_active(row[4], row[5], row[6])
         status = "Active" if is_active else "Inactive"
         values_data.append({
@@ -702,11 +1156,11 @@ def build_lookup_report_datasets(conn, expiring_within_days):
             "Description": row[3] or "",
             "Enabled Flag": row[4],
             "Start Date Active": row[5],
-            "End Date Active": row[6],
+            "End Date Active": end_date,
             "Creation Date": row[7],
             "Last Update Date": row[8],
             "Status": status,
-            "Days Until Expiry": (row[6] - today).days if row[6] else None
+            "Days Until Expiry": (end_date - today).days if end_date else None
         })
 
     values_df = pd.DataFrame(values_data)
@@ -801,15 +1255,15 @@ if st.session_state.db_error:
 st.sidebar.title("📋 Navigation")
 page = st.sidebar.radio(
     "Select a page:",
-    ["🔎 Search & Discovery", "➕ Create New", "📊 View All", "📈 Reports", "✏️ Edit", "⚡ Bulk Upload", "🔗 Dependencies"]
+    ["🔎 Search", "➕ Create", "📊 View All", "📈 Reports", "✏️ Edit", "⚡ Bulk Upload", "🧠 Assistant", "🔗 Dependencies"]
 )
 
 # ============================================================================
-# PAGE: SEARCH & DISCOVERY
+# PAGE: Search
 # ============================================================================
 
-if page == "🔎 Search & Discovery":
-    st.header("🔎 Search & Discovery")
+if page == "🔎 Search":
+    st.header("🔎 Search")
     st.markdown("Find lookup codes using global search")
     
     col1, col2 = st.columns([3, 1])
@@ -883,11 +1337,11 @@ if page == "🔎 Search & Discovery":
         st.info("👉 Enter a search term to find lookup codes")
 
 # ============================================================================
-# PAGE: CREATE NEW
+# PAGE: Create
 # ============================================================================
 
-elif page == "➕ Create New":
-    st.header("➕ Create New Lookup Code")
+elif page == "➕ Create":
+    st.header("➕ Create Lookup Code")
     
     with st.form("create_lookup_form"):
         col1, col2 = st.columns(2)
@@ -1434,6 +1888,95 @@ elif page == "⚡ Bulk Upload":
         
         except Exception as e:
             st.error(f"Error reading file: {str(e)}")
+
+# ============================================================================
+# PAGE: ASSISTANT
+# ============================================================================
+
+elif page == "🧠 Assistant":
+    st.header("🧠 Plain-English Assistant")
+    st.markdown("Use free-text search queries and plain-English change requests with a preview-before-apply workflow.")
+
+    query_tab, change_tab = st.tabs(["Free-text Query", "Change Request"])
+
+    with query_tab:
+        assistant_query = st.text_area(
+            "Describe what you want to find",
+            placeholder="Examples: show active type COUNTRY lookups expiring this month\nfind inactive code LOW in type PRIORITY\nlist finance related lookups",
+            height=120,
+            key="assistant_query_text"
+        )
+
+        if st.button("Interpret Query", type="primary", key="assistant_query_button"):
+            if not assistant_query.strip():
+                st.error("Enter a free-text query first.")
+            else:
+                st.session_state.assistant_query_parsed = parse_free_text_query(assistant_query)
+
+        parsed_query = st.session_state.get("assistant_query_parsed")
+        if parsed_query:
+            st.caption(
+                f"Interpreted filters: type={parsed_query['lookup_type'] or 'any'}, code={parsed_query['lookup_code'] or 'any'}, "
+                f"status={parsed_query['status'] or 'any'}, expiring_within_days={parsed_query['expiring_within_days'] if parsed_query['expiring_within_days'] is not None else 'none'}, "
+                f"keywords={', '.join(parsed_query['keywords']) if parsed_query['keywords'] else 'none'}, limit={parsed_query['limit']}"
+            )
+
+            conn = get_db_connection()
+            if conn:
+                try:
+                    query_results_df = search_lookup_values_by_instruction(conn, parsed_query)
+                    if query_results_df.empty:
+                        st.info("No lookup values matched the interpreted query.")
+                    else:
+                        st.success(f"Found {len(query_results_df)} matching records.")
+                        st.dataframe(query_results_df, use_container_width=True)
+                except Exception as e:
+                    st.error(f"Free-text query error: {str(e)}")
+
+    with change_tab:
+        change_request_text = st.text_area(
+            "Describe the change you want to make",
+            placeholder="Examples: disable code LOW in type PRIORITY\nset meaning to \"High Priority\" for code HIGH in type PRIORITY\nchange description to \"Retired after workflow update\" and end date 2026-06-30 for code OLD in type STATUS",
+            height=140,
+            key="assistant_change_text"
+        )
+
+        if st.button("Preview Change Request", type="primary", key="assistant_change_preview_button"):
+            st.session_state.assistant_change_request = parse_change_request(change_request_text)
+
+        parsed_request = st.session_state.get("assistant_change_request")
+        if parsed_request:
+            if parsed_request["errors"]:
+                for error_message in parsed_request["errors"]:
+                    st.error(error_message)
+            else:
+                for warning_message in parsed_request["warnings"]:
+                    st.warning(warning_message)
+
+                st.caption(
+                    f"Interpreted change: type={parsed_request['lookup_type']}, code={parsed_request['lookup_code']}, "
+                    f"enabled={parsed_request['enabled_flag'] or 'no change'}, meaning={parsed_request['meaning'] or 'no change'}, "
+                    f"description={parsed_request['description'] or 'no change'}, start_date={parsed_request['start_date'] or 'no change'}, end_date={parsed_request['end_date'] or 'no change'}"
+                )
+
+                conn = get_db_connection()
+                if conn:
+                    try:
+                        current_record = get_lookup_value_record(conn, parsed_request["lookup_type"], parsed_request["lookup_code"])
+                        if not current_record:
+                            st.error("The requested lookup type and code could not be found.")
+                        else:
+                            proposed_record, preview_df = build_change_request_preview(current_record, parsed_request)
+                            st.dataframe(preview_df, use_container_width=True)
+
+                            if st.button("Apply Change Request", key="assistant_apply_change_button"):
+                                apply_change_request(conn, parsed_request)
+                                st.success(
+                                    f"Applied change request to {proposed_record['Lookup Type']} / {proposed_record['Lookup Code']}."
+                                )
+                                st.session_state.assistant_change_request = None
+                    except Exception as e:
+                        st.error(f"Change request error: {str(e)}")
 
 # ============================================================================
 # PAGE: DEPENDENCIES

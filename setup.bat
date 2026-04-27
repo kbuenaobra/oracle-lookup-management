@@ -63,18 +63,25 @@ if %errorlevel% neq 0 (
 )
 echo [OK] Virtual environment activated
 
+set "PYTHON_EXE=venv\Scripts\python.exe"
+
 REM Install dependencies
-echo.
-echo Installing dependencies...
+%PYTHON_EXE% -m pip install --upgrade pip setuptools wheel
+%PYTHON_EXE% -m pip install --only-binary :all: -r requirements.txt
 pip install --upgrade pip setuptools wheel
 pip install --only-binary :all: -r requirements.txt
 if %errorlevel% neq 0 (
-    echo ERROR: Failed to install dependencies with binary wheels
-    echo Attempting alternative installation...
-    pip install streamlit==1.31.1
+    %PYTHON_EXE% -m pip install streamlit==1.56.0
+    %PYTHON_EXE% -m pip install oracledb==3.4.2
+    %PYTHON_EXE% -m pip install pandas==3.0.2
+    %PYTHON_EXE% -m pip install python-dateutil==2.8.2
+    %PYTHON_EXE% -m pip install pdfplumber==0.11.9
+    %PYTHON_EXE% -m pip install opencv-python-headless==4.13.0.92
+    %PYTHON_EXE% -m pip install Pillow==12.2.0
+    %PYTHON_EXE% -m pip install rapidocr-onnxruntime==1.2.3
     pip install oracledb==1.4.1
     pip install pandas==1.5.3
-    pip install python-dateutil==2.8.2
+        echo Please manually run: %PYTHON_EXE% -m pip install -r requirements.txt
     if %errorlevel% neq 0 (
         echo ERROR: Installation failed
         echo Please manually run: pip install -r requirements.txt
@@ -87,7 +94,7 @@ echo [OK] Dependencies installed
 REM Initialize database schema
 echo.
 echo Initializing database schema...
-python create_schema.py
+%PYTHON_EXE% create_schema.py
 if %errorlevel% neq 0 (
     echo ERROR: Failed to initialize database
     echo Please check your Oracle connection settings in create_schema.py
@@ -106,6 +113,6 @@ echo The application will open at: http://localhost:8501
 echo Press Ctrl+C to stop the server
 echo.
 
-streamlit run app.py
+%PYTHON_EXE% -m streamlit run app.py
 
 pause
